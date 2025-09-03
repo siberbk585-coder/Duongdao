@@ -123,23 +123,7 @@
       <input id="textLine" type="text" placeholder="Ví dụ: Tài liệu nội bộ - Không chia sẻ" />
     </div>
 
-    <div class="row">
-      <div class="field">
-        <label for="position">Vị trí</label>
-        <select id="position">
-          <option value="top-center">Trên - Giữa</option>
-          <option value="bottom-center">Dưới - Giữa</option>
-          <option value="top-left">Trên - Trái</option>
-          <option value="top-right">Trên - Phải</option>
-          <option value="bottom-left">Dưới - Trái</option>
-          <option value="bottom-right">Dưới - Phải</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="fontSize">Cỡ chữ</label>
-        <input id="fontSize" type="number" min="6" max="72" value="16" />
-      </div>
-    </div>
+    
 
     <button id="processBtn">Chèn và tải xuống</button>
 
@@ -153,14 +137,59 @@
 
     const fileInput = document.getElementById('pdfFile');
     const textInput = document.getElementById('textLine');
-    const positionSelect = document.getElementById('position');
-    const fontSizeInput = document.getElementById('fontSize');
+    const DEFAULT_POSITION = 'bottom-right';
+    const DEFAULT_FONT_SIZE = 11;
     const btn = document.getElementById('processBtn');
     const statusEl = document.getElementById('status');
     const downloadLink = document.getElementById('downloadLink');
 
     function setStatus(message) {
       statusEl.textContent = message || '';
+    }
+
+    async function processPdfFromBytes(arrayBuffer, originalName, text, posKey, size) {
+      const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+      if (window.fontkit && typeof pdfDoc.registerFontkit === 'function') {
+        pdfDoc.registerFontkit(window.fontkit);
+      }
+
+      let drawFont = null;
+      try {
+        const fontResp = await fetch(FONT_URL);
+        if (!fontResp.ok) throw new Error('Không tải được font Unicode');
+        const fontBytes = await fontResp.arrayBuffer();
+        drawFont = await pdfDoc.embedFont(fontBytes, { subset: true });
+      } catch (e) {
+        drawFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      }
+
+      const page = pdfDoc.getPage(0);
+      const { x, y } = computePosition(page, text, drawFont, size, posKey);
+
+      page.drawText(text, {
+        x,
+        y,
+        size,
+        font: drawFont,
+        color: PDFLib.rgb(0, 0, 0),
+      });
+
+      const bytes = await pdfDoc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+
+      const baseName = originalName?.replace(/\.pdf$/i, '') || 'document';
+      const outName = `${baseName}-edited.pdf`;
+
+      const url = URL.createObjectURL(blob);
+      downloadLink.href = url;
+      downloadLink.download = outName;
+      downloadLink.style.display = 'inline-block';
+
+      setStatus('Hoàn tất! Nhấn nút dưới để tải file đã chèn.');
+      downloadLink.click();
+
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
     }
 
     function computePosition(page, text, font, size, posKey, margin = 36) {
@@ -194,8 +223,8 @@
 
       const file = fileInput.files && fileInput.files[0];
       const text = (textInput.value || '').trim();
-      const posKey = positionSelect.value;
-      const size = Math.max(6, Math.min(72, Number(fontSizeInput.value) || 16));
+      const posKey = DEFAULT_POSITION;
+      const size = DEFAULT_FONT_SIZE;
 
       if (!file) {
         setStatus('Vui lòng chọn một file PDF.');
@@ -209,58 +238,39 @@
       try {
         setStatus('Đang xử lý PDF...');
         const arrayBuffer = await file.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-
-        // Đăng ký fontkit để nhúng font Unicode
-        if (window.fontkit && typeof pdfDoc.registerFontkit === 'function') {
-          pdfDoc.registerFontkit(window.fontkit);
-        }
-
-        // Thử nhúng font Unicode để hỗ trợ tiếng Việt
-        let drawFont = null;
-        try {
-          const fontResp = await fetch(FONT_URL);
-          if (!fontResp.ok) throw new Error('Không tải được font Unicode');
-          const fontBytes = await fontResp.arrayBuffer();
-          drawFont = await pdfDoc.embedFont(fontBytes, { subset: true });
-        } catch (e) {
-          // Fallback về Helvetica (chỉ hỗ trợ ASCII)
-          drawFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        }
-
-        const page = pdfDoc.getPage(0);
-        const { x, y } = computePosition(page, text, drawFont, size, posKey);
-
-        page.drawText(text, {
-          x,
-          y,
-          size,
-          font: drawFont,
-          color: PDFLib.rgb(0, 0, 0),
-        });
-
-        const bytes = await pdfDoc.save();
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-
-        const baseName = file.name?.replace(/\.pdf$/i, '') || 'document';
-        const outName = `${baseName}-edited.pdf`;
-
-        const url = URL.createObjectURL(blob);
-        downloadLink.href = url;
-        downloadLink.download = outName;
-        downloadLink.style.display = 'inline-block';
-
-        setStatus('Hoàn tất! Nhấn nút dưới để tải file đã chèn.');
-        // Tự động click để tải ngay (có thể comment nếu không muốn)
-        downloadLink.click();
-
-        // Thu dọn URL sau vài phút
-        setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+        await processPdfFromBytes(arrayBuffer, file.name, text, posKey, size);
       } catch (err) {
         console.error(err);
         setStatus('Có lỗi xảy ra khi xử lý PDF: ' + (err && err.message ? err.message : 'Vui lòng thử lại.'));
       }
     });
+
+    // Tự động xử lý nếu có tham số query: ?pdfUrl=...&text=...&pos=...&size=...
+    (async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const pdfUrl = params.get('pdfUrl');
+        const text = (params.get('text') || '').trim();
+        const posKey = (params.get('pos') || DEFAULT_POSITION);
+        const sizeParam = Number(params.get('size'));
+        const size = Number.isFinite(sizeParam) ? sizeParam : DEFAULT_FONT_SIZE;
+
+        if (pdfUrl && text) {
+          setStatus('Đang tải và xử lý PDF tự động...');
+          downloadLink.style.display = 'none';
+          downloadLink.removeAttribute('href');
+
+          const resp = await fetch(pdfUrl, { cache: 'no-store' });
+          if (!resp.ok) throw new Error('Không tải được PDF từ pdfUrl');
+          const arrayBuffer = await resp.arrayBuffer();
+          const guessedName = pdfUrl.split('/')?.pop() || 'document.pdf';
+          await processPdfFromBytes(arrayBuffer, guessedName, text, posKey, size);
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus('Lỗi khi xử lý tự động: ' + (err && err.message ? err.message : 'Vui lòng kiểm tra tham số.'));
+      }
+    })();
   </script>
 </body>
 </html>

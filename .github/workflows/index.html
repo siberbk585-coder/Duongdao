@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chèn text vào PDF (Client-side)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.2.1/dist/fontkit.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #60a5fa;  /* xanh nhạt */
+      --primary-dark: #3b82f6;
+      --text: #0f172a;
+      --muted: #64748b;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+    }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 6px 20px rgba(2, 6, 23, 0.06);
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 16px;
+    }
+    p.hint {
+      color: var(--muted);
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+    .field {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    input[type="file"],
+    input[type="text"],
+    select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      outline: none;
+      transition: border-color .2s ease, box-shadow .2s ease;
+    }
+    input[type="file"]:focus,
+    input[type="text"]:focus,
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(96,165,250,0.25);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s ease, transform .02s ease;
+    }
+    button:hover { background: var(--primary-dark); }
+    button:active { transform: translateY(1px); }
+    .note {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .out {
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    a.download {
+      display: inline-block;
+      margin-top: 12px;
+      text-decoration: none;
+      color: #fff;
+      background: var(--primary);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Chèn một dòng chữ vào PDF</h1>
+    <p class="hint">Xử lý hoàn toàn trong trình duyệt. Không tải file lên máy chủ.</p>
+
+    <div class="field">
+      <label for="pdfFile">Chọn file PDF</label>
+      <input id="pdfFile" type="file" accept="application/pdf" />
+      <div class="note">Dung lượng lớn vẫn được, nhưng có thể mất vài giây.</div>
+    </div>
+
+    <div class="field">
+      <label for="textLine">Nội dung dòng chữ cần chèn</label>
+      <input id="textLine" type="text" placeholder="Ví dụ: Tài liệu nội bộ - Không chia sẻ" />
+    </div>
+
+    
+
+    <button id="processBtn">Chèn và tải xuống</button>
+
+    <div class="out" id="status"></div>
+    <a id="downloadLink" class="download" href="#" download style="display:none;">Tải file đã chèn</a>
+  </div>
+
+  <script>
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans-Regular.ttf';
+
+    const fileInput = document.getElementById('pdfFile');
+    const textInput = document.getElementById('textLine');
+    const DEFAULT_POSITION = 'bottom-right';
+    const DEFAULT_FONT_SIZE = 11;
+    const btn = document.getElementById('processBtn');
+    const statusEl = document.getElementById('status');
+    const downloadLink = document.getElementById('downloadLink');
+
+    function setStatus(message) {
+      statusEl.textContent = message || '';
+    }
+
+    async function processPdfFromBytes(arrayBuffer, originalName, text, posKey, size) {
+      const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+      if (window.fontkit && typeof pdfDoc.registerFontkit === 'function') {
+        pdfDoc.registerFontkit(window.fontkit);
+      }
+
+      let drawFont = null;
+      try {
+        const fontResp = await fetch(FONT_URL);
+        if (!fontResp.ok) throw new Error('Không tải được font Unicode');
+        const fontBytes = await fontResp.arrayBuffer();
+        drawFont = await pdfDoc.embedFont(fontBytes, { subset: true });
+      } catch (e) {
+        drawFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      }
+
+      const page = pdfDoc.getPage(0);
+      const { x, y } = computePosition(page, text, drawFont, size, posKey);
+
+      page.drawText(text, {
+        x,
+        y,
+        size,
+        font: drawFont,
+        color: PDFLib.rgb(0, 0, 0),
+      });
+
+      const bytes = await pdfDoc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+
+      const baseName = originalName?.replace(/\.pdf$/i, '') || 'document';
+      const outName = `${baseName}-edited.pdf`;
+
+      return { blob, outName };
+    }
+
+    async function deliverResult(result, options = {}) {
+      const { blob, outName } = result || {};
+      const {
+        shouldDownload = true,
+        callbackUrl = null,
+        callbackField = 'file',
+        extraFields = {},
+      } = options;
+
+      if (!blob) return;
+
+      let callbackOk = false;
+      if (callbackUrl) {
+        try {
+          const form = new FormData();
+          form.append(callbackField, blob, outName);
+          Object.entries(extraFields).forEach(([k, v]) => {
+            if (v !== undefined && v !== null) form.append(k, String(v));
+          });
+          const resp = await fetch(callbackUrl, { method: 'POST', body: form });
+          callbackOk = resp.ok;
+          if (!resp.ok) throw new Error('POST callback không thành công');
+        } catch (err) {
+          console.error(err);
+          setStatus('Gửi file tới callbackUrl thất bại: ' + (err?.message || 'Lỗi không xác định'));
+        }
+      }
+
+      if (shouldDownload) {
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = outName;
+        downloadLink.style.display = 'inline-block';
+        downloadLink.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+      }
+
+      if (callbackUrl && callbackOk) {
+        setStatus(shouldDownload ? 'Đã gửi file tới callbackUrl và sẵn sàng tải xuống.' : 'Đã gửi file tới callbackUrl.');
+      } else if (!callbackUrl) {
+        setStatus('Hoàn tất! Nhấn nút dưới để tải file đã chèn.');
+      }
+    }
+
+    function computePosition(page, text, font, size, posKey, margin = 36) {
+      const pageWidth = page.getWidth();
+      const pageHeight = page.getHeight();
+      const textWidth = font.widthOfTextAtSize(text, size);
+      const textHeight = size;
+
+      let x = margin;
+      let y = pageHeight - margin - textHeight;
+
+      if (posKey.includes('center')) {
+        x = (pageWidth - textWidth) / 2;
+      } else if (posKey.includes('right')) {
+        x = pageWidth - margin - textWidth;
+      }
+
+      if (posKey.startsWith('top')) {
+        y = pageHeight - margin - textHeight;
+      } else if (posKey.startsWith('bottom')) {
+        y = margin;
+      }
+
+      return { x, y };
+    }
+
+    btn.addEventListener('click', async () => {
+      setStatus('');
+      downloadLink.style.display = 'none';
+      downloadLink.removeAttribute('href');
+
+      const file = fileInput.files && fileInput.files[0];
+      const text = (textInput.value || '').trim();
+      const posKey = DEFAULT_POSITION;
+      const size = DEFAULT_FONT_SIZE;
+
+      if (!file) {
+        setStatus('Vui lòng chọn một file PDF.');
+        return;
+      }
+      if (!text) {
+        setStatus('Vui lòng nhập nội dung dòng chữ cần chèn.');
+        return;
+      }
+
+      try {
+        setStatus('Đang xử lý PDF...');
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await processPdfFromBytes(arrayBuffer, file.name, text, posKey, size);
+        await deliverResult(result, { shouldDownload: true });
+      } catch (err) {
+        console.error(err);
+        setStatus('Có lỗi xảy ra khi xử lý PDF: ' + (err && err.message ? err.message : 'Vui lòng thử lại.'));
+      }
+    });
+
+    // Tự động xử lý nếu có tham số query: ?pdfUrl=...&text=...&pos=...&size=...
+    (async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const pdfUrl = params.get('pdfUrl');
+        const text = (params.get('text') || '').trim();
+        const posKey = (params.get('pos') || DEFAULT_POSITION);
+        const sizeParam = Number(params.get('size'));
+        const size = Number.isFinite(sizeParam) ? sizeParam : DEFAULT_FONT_SIZE;
+        const callbackUrl = params.get('callbackUrl');
+        const callbackField = params.get('callbackField') || 'file';
+        const downloadParam = (params.get('download') || 'true').toLowerCase();
+        const shouldDownload = !(downloadParam === 'false' || downloadParam === '0' || downloadParam === 'no');
+
+        if (pdfUrl && text) {
+          setStatus('Đang tải và xử lý PDF tự động...');
+          downloadLink.style.display = 'none';
+          downloadLink.removeAttribute('href');
+
+          const resp = await fetch(pdfUrl, { cache: 'no-store' });
+          if (!resp.ok) throw new Error('Không tải được PDF từ pdfUrl');
+          const arrayBuffer = await resp.arrayBuffer();
+          const guessedName = pdfUrl.split('/')?.pop() || 'document.pdf';
+          const result = await processPdfFromBytes(arrayBuffer, guessedName, text, posKey, size);
+          await deliverResult(result, {
+            shouldDownload,
+            callbackUrl,
+            callbackField,
+            extraFields: { text, pos: posKey, size, sourceUrl: pdfUrl },
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus('Lỗi khi xử lý tự động: ' + (err && err.message ? err.message : 'Vui lòng kiểm tra tham số.'));
+      }
+    })();
+  </script>
+</body>
+</html>

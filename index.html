@@ -2,275 +2,553 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <title>Chèn text vào PDF (Client-side)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.2.1/dist/fontkit.umd.min.js"></script>
+  <title>Trích xuất hàng theo từ khóa từ PDF</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js" integrity="sha512-h9fSkjY5ckWjUx1zcrp9WLN+MB+TqyP8oArHKxmxhyWZb79BtG9wzBl0Pi9Cb7p3Seaa1zxnP7cIo24oCn2wPQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js" integrity="sha512-pR7cgG3XU5pcdSA2v3wT3Gf4muBTYJhOVxzh9qQVZGw1GyY1ZsLUkF3EXrdjyxg2dV5jv39lYlxBtK7Uw1EHuA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha256-O7tBq4CPrl/cwlQilAL0TfGgnYl3kxRJEXRGADqhzyY=" crossorigin="anonymous"></script>
   <style>
     :root {
-      --primary: #60a5fa;  /* xanh nhạt */
-      --primary-dark: #3b82f6;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --surface: #ffffff;
+      --background: #f1f5f9;
       --text: #0f172a;
       --muted: #64748b;
-      --bg: #f8fafc;
-      --card: #ffffff;
       --border: #e2e8f0;
+      --radius-lg: 18px;
     }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      background: var(--bg);
-      color: var(--text);
       margin: 0;
-      padding: 24px;
+      padding: 32px 16px 48px;
+      background: var(--background);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
+
     .container {
-      max-width: 720px;
+      max-width: 880px;
       margin: 0 auto;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 6px 20px rgba(2, 6, 23, 0.06);
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.15);
     }
+
     h1 {
-      font-size: 20px;
-      margin: 0 0 16px;
+      margin: 0 0 12px;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
     }
-    p.hint {
+
+    p.lead {
+      margin: 0 0 24px;
       color: var(--muted);
-      margin-top: 0;
-      margin-bottom: 20px;
+      font-size: 16px;
+      line-height: 1.6;
     }
-    .field {
-      margin-bottom: 16px;
+
+    .input-card {
+      display: grid;
+      gap: 18px;
+      padding: 24px;
+      background: #f8fafc;
+      border-radius: 16px;
+      border: 1px dashed var(--border);
     }
+
     label {
       display: block;
       font-weight: 600;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
+
     input[type="file"],
-    input[type="text"],
-    select {
+    input[type="text"] {
+      display: block;
       width: 100%;
-      box-sizing: border-box;
-      padding: 10px 12px;
+      padding: 14px;
+      border-radius: 12px;
       border: 1px solid var(--border);
-      border-radius: 8px;
       background: #fff;
-      outline: none;
-      transition: border-color .2s ease, box-shadow .2s ease;
+      font-size: 15px;
+      cursor: pointer;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+
     input[type="file"]:focus,
-    input[type="text"]:focus,
-    select:focus {
+    input[type="text"]:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(96,165,250,0.25);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      outline: none;
     }
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 16px;
-    }
+
     button {
+      align-self: start;
+      padding: 14px 20px;
+      border-radius: 12px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.2s ease;
+    }
+
+    button:hover {
+      box-shadow: 0 12px 20px rgba(37, 99, 235, 0.22);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      margin-top: 12px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      transition: width 0.3s ease;
+    }
+
+    .status {
+      margin-top: 20px;
+      font-size: 15px;
+      color: var(--muted);
+    }
+
+    .results {
+      margin-top: 32px;
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .results-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      background: #f8fafc;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+
+    tbody tr:hover {
+      background: rgba(37, 99, 235, 0.05);
+    }
+
+    .download-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 24px;
+      padding: 12px 18px;
       background: var(--primary);
       color: #fff;
-      border: none;
-      padding: 12px 14px;
+      text-decoration: none;
       border-radius: 10px;
       font-weight: 600;
-      cursor: pointer;
-      transition: background .2s ease, transform .02s ease;
+      transition: background 0.2s ease;
     }
-    button:hover { background: var(--primary-dark); }
-    button:active { transform: translateY(1px); }
-    .note {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 6px;
+
+    .download-link:hover {
+      background: var(--primary-dark);
     }
-    .out {
-      margin-top: 16px;
-      font-size: 14px;
+
+    .empty-state {
+      padding: 24px;
+      text-align: center;
       color: var(--muted);
     }
-    a.download {
-      display: inline-block;
-      margin-top: 12px;
-      text-decoration: none;
-      color: #fff;
-      background: var(--primary);
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-weight: 600;
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 28px 20px;
+      }
+      button {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Chèn một dòng chữ vào PDF</h1>
-    <p class="hint">Xử lý hoàn toàn trong trình duyệt. Không tải file lên máy chủ.</p>
+  <main class="container">
+    <h1>Trích xuất các hàng theo từ khóa</h1>
+    <p class="lead">
+      Tải lên một hoặc nhiều tập tin PDF, công cụ sẽ đọc bảng ở trang thứ hai và xuất toàn bộ
+      những hàng chứa từ khóa bạn cung cấp ra một tập tin Excel để bạn thống kê.
+    </p>
 
-    <div class="field">
-      <label for="pdfFile">Chọn file PDF</label>
-      <input id="pdfFile" type="file" accept="application/pdf" />
-      <div class="note">Dung lượng lớn vẫn được, nhưng có thể mất vài giây.</div>
-    </div>
+    <section class="input-card">
+      <div>
+        <label for="pdfInput">Chọn các file PDF</label>
+        <input id="pdfInput" type="file" accept="application/pdf" multiple />
+        <p class="status" id="fileHint">Hệ thống sẽ xử lý từng file và tổng hợp kết quả.</p>
+      </div>
+      <div>
+        <label for="keywordInput">Từ khóa cần tìm</label>
+        <input
+          id="keywordInput"
+          type="text"
+          placeholder="Ví dụ: Chu kỳ"
+          value="Chu kỳ"
+        />
+      </div>
+      <button id="processBtn" type="button">Bắt đầu trích xuất</button>
+      <div
+        id="progressWrapper"
+        class="progress"
+        hidden
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+        aria-label="Tiến độ xử lý"
+      >
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <p class="status" id="status"></p>
+    </section>
 
-    <div class="field">
-      <label for="textLine">Nội dung dòng chữ cần chèn</label>
-      <input id="textLine" type="text" placeholder="Ví dụ: Tài liệu nội bộ - Không chia sẻ" />
-    </div>
+    <section class="results" id="results" hidden>
+      <div class="results-header">Kết quả trích xuất</div>
+      <div id="resultsBody"></div>
+    </section>
 
-    
-
-    <button id="processBtn">Chèn và tải xuống</button>
-
-    <div class="out" id="status"></div>
-    <a id="downloadLink" class="download" href="#" download style="display:none;">Tải file đã chèn</a>
-  </div>
+    <a id="downloadLink" class="download-link" href="#" download="ket-qua-tu-khoa.xlsx" hidden>
+      ⬇️ Tải file Excel thống kê
+    </a>
+  </main>
 
   <script>
-    const { PDFDocument, StandardFonts } = PDFLib;
-    const FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans-Regular.ttf';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js';
 
-    const fileInput = document.getElementById('pdfFile');
-    const textInput = document.getElementById('textLine');
-    const DEFAULT_POSITION = 'bottom-right';
-    const DEFAULT_FONT_SIZE = 11;
-    const btn = document.getElementById('processBtn');
+    const fileInput = document.getElementById('pdfInput');
+    const processBtn = document.getElementById('processBtn');
+    const keywordInput = document.getElementById('keywordInput');
     const statusEl = document.getElementById('status');
+    const progressWrapper = document.getElementById('progressWrapper');
+    const progressBar = document.getElementById('progressBar');
+    const resultsSection = document.getElementById('results');
+    const resultsBody = document.getElementById('resultsBody');
     const downloadLink = document.getElementById('downloadLink');
 
-    function setStatus(message) {
-      statusEl.textContent = message || '';
-    }
+    processBtn.addEventListener('click', async () => {
+      const files = Array.from(fileInput.files || []);
+      const keyword = (keywordInput.value || '').trim();
+      resetUI();
 
-    async function processPdfFromBytes(arrayBuffer, originalName, text, posKey, size) {
-      const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-
-      if (window.fontkit && typeof pdfDoc.registerFontkit === 'function') {
-        pdfDoc.registerFontkit(window.fontkit);
-      }
-
-      let drawFont = null;
-      try {
-        const fontResp = await fetch(FONT_URL);
-        if (!fontResp.ok) throw new Error('Không tải được font Unicode');
-        const fontBytes = await fontResp.arrayBuffer();
-        drawFont = await pdfDoc.embedFont(fontBytes, { subset: true });
-      } catch (e) {
-        drawFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      }
-
-      const page = pdfDoc.getPage(0);
-      const { x, y } = computePosition(page, text, drawFont, size, posKey);
-
-      page.drawText(text, {
-        x,
-        y,
-        size,
-        font: drawFont,
-        color: PDFLib.rgb(0, 0, 0),
-      });
-
-      const bytes = await pdfDoc.save();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-
-      const baseName = originalName?.replace(/\.pdf$/i, '') || 'document';
-      const outName = `${baseName}-edited.pdf`;
-
-      const url = URL.createObjectURL(blob);
-      downloadLink.href = url;
-      downloadLink.download = outName;
-      downloadLink.style.display = 'inline-block';
-
-      setStatus('Hoàn tất! Nhấn nút dưới để tải file đã chèn.');
-      downloadLink.click();
-
-      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
-    }
-
-    function computePosition(page, text, font, size, posKey, margin = 36) {
-      const pageWidth = page.getWidth();
-      const pageHeight = page.getHeight();
-      const textWidth = font.widthOfTextAtSize(text, size);
-      const textHeight = size;
-
-      let x = margin;
-      let y = pageHeight - margin - textHeight;
-
-      if (posKey.includes('center')) {
-        x = (pageWidth - textWidth) / 2;
-      } else if (posKey.includes('right')) {
-        x = pageWidth - margin - textWidth;
-      }
-
-      if (posKey.startsWith('top')) {
-        y = pageHeight - margin - textHeight;
-      } else if (posKey.startsWith('bottom')) {
-        y = margin;
-      }
-
-      return { x, y };
-    }
-
-    btn.addEventListener('click', async () => {
-      setStatus('');
-      downloadLink.style.display = 'none';
-      downloadLink.removeAttribute('href');
-
-      const file = fileInput.files && fileInput.files[0];
-      const text = (textInput.value || '').trim();
-      const posKey = DEFAULT_POSITION;
-      const size = DEFAULT_FONT_SIZE;
-
-      if (!file) {
-        setStatus('Vui lòng chọn một file PDF.');
-        return;
-      }
-      if (!text) {
-        setStatus('Vui lòng nhập nội dung dòng chữ cần chèn.');
+      if (!files.length) {
+        setStatus('Vui lòng chọn ít nhất một file PDF.');
         return;
       }
 
-      try {
-        setStatus('Đang xử lý PDF...');
-        const arrayBuffer = await file.arrayBuffer();
-        await processPdfFromBytes(arrayBuffer, file.name, text, posKey, size);
-      } catch (err) {
-        console.error(err);
-        setStatus('Có lỗi xảy ra khi xử lý PDF: ' + (err && err.message ? err.message : 'Vui lòng thử lại.'));
+      if (!keyword) {
+        setStatus('Vui lòng nhập từ khóa cần tìm.');
+        return;
       }
+
+      setStatus('Đang xử lý, vui lòng chờ...');
+      processBtn.disabled = true;
+      processBtn.textContent = 'Đang xử lý...';
+      if (progressWrapper) {
+        progressWrapper.hidden = false;
+      }
+      updateProgress(0);
+
+      const collectedRows = [];
+      const perFileSummaries = [];
+
+      for (const [index, file] of files.entries()) {
+        setStatus(`Đang xử lý file ${index + 1}/${files.length}: ${file.name}`);
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const matches = await extractRowsFromPdf(arrayBuffer, keyword);
+          if (matches.length) {
+            matches.forEach((rowText) => {
+              collectedRows.push({ fileName: file.name, text: rowText });
+            });
+          }
+          perFileSummaries.push({
+            name: file.name,
+            totalMatches: matches.length,
+            status: 'Thành công',
+            message: matches.length
+              ? `Tìm thấy ${matches.length} hàng chứa từ khóa "${keyword}".`
+              : 'Không tìm thấy hàng phù hợp ở trang 2.'
+          });
+        } catch (error) {
+          console.error('Lỗi xử lý file', file.name, error);
+          perFileSummaries.push({
+            name: file.name,
+            totalMatches: 0,
+            status: 'Lỗi',
+            message: error?.message || 'Không thể đọc file PDF.'
+          });
+        }
+
+        updateProgress(((index + 1) / files.length) * 100);
+      }
+
+      renderResults(perFileSummaries, collectedRows, keyword);
+      handleDownload(collectedRows, keyword);
+
+      const successCount = collectedRows.length;
+      if (successCount) {
+        setStatus(`Hoàn tất! Đã tìm thấy ${successCount} hàng chứa từ khóa "${keyword}".`);
+      } else {
+        setStatus(`Hoàn tất! Không tìm thấy hàng nào chứa từ khóa "${keyword}".`);
+      }
+
+      processBtn.disabled = false;
+      processBtn.textContent = 'Bắt đầu trích xuất';
+      updateProgress(100);
     });
 
-    // Tự động xử lý nếu có tham số query: ?pdfUrl=...&text=...&pos=...&size=...
-    (async () => {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const pdfUrl = params.get('pdfUrl');
-        const text = (params.get('text') || '').trim();
-        const posKey = (params.get('pos') || DEFAULT_POSITION);
-        const sizeParam = Number(params.get('size'));
-        const size = Number.isFinite(sizeParam) ? sizeParam : DEFAULT_FONT_SIZE;
-
-        if (pdfUrl && text) {
-          setStatus('Đang tải và xử lý PDF tự động...');
-          downloadLink.style.display = 'none';
-          downloadLink.removeAttribute('href');
-
-          const resp = await fetch(pdfUrl, { cache: 'no-store' });
-          if (!resp.ok) throw new Error('Không tải được PDF từ pdfUrl');
-          const arrayBuffer = await resp.arrayBuffer();
-          const guessedName = pdfUrl.split('/')?.pop() || 'document.pdf';
-          await processPdfFromBytes(arrayBuffer, guessedName, text, posKey, size);
-        }
-      } catch (err) {
-        console.error(err);
-        setStatus('Lỗi khi xử lý tự động: ' + (err && err.message ? err.message : 'Vui lòng kiểm tra tham số.'));
+    function resetUI() {
+      statusEl.textContent = '';
+      resultsSection.hidden = true;
+      resultsBody.innerHTML = '';
+      downloadLink.hidden = true;
+      downloadLink.removeAttribute('href');
+      downloadLink.setAttribute('download', 'ket-qua-tu-khoa.xlsx');
+      if (progressWrapper) {
+        progressWrapper.hidden = true;
       }
-    })();
+      updateProgress(0);
+    }
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+    }
+
+    function updateProgress(value) {
+      if (!progressBar) return;
+      const clamped = Math.max(0, Math.min(100, value));
+      progressBar.style.width = `${clamped}%`;
+      progressBar.setAttribute('aria-valuenow', clamped.toFixed(0));
+      if (progressWrapper) {
+        progressWrapper.setAttribute('aria-valuenow', clamped.toFixed(0));
+      }
+    }
+
+    async function extractRowsFromPdf(arrayBuffer, keyword) {
+      const uint8 = new Uint8Array(arrayBuffer);
+      const loadingTask = pdfjsLib.getDocument({ data: uint8 });
+      const pdf = await loadingTask.promise;
+
+      if (pdf.numPages < 2) {
+        throw new Error('File không có đủ 2 trang.');
+      }
+
+      const page = await pdf.getPage(2);
+      const textContent = await page.getTextContent();
+
+      const lineMap = new Map();
+
+      for (const item of textContent.items) {
+        const text = (item.str || '').trim();
+        if (!text) continue;
+
+        const transform = item.transform;
+        const x = transform[4];
+        const y = transform[5];
+
+        const key = Math.round(y / 2) * 2;
+        if (!lineMap.has(key)) {
+          lineMap.set(key, []);
+        }
+        lineMap.get(key).push({ x, text });
+      }
+
+      const sortedLines = [...lineMap.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([_, items]) => {
+          return items
+            .sort((a, b) => a.x - b.x)
+            .map((item) => item.text)
+            .join(' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        })
+        .filter(Boolean);
+
+      const keywordNormalized = normalizeText(keyword);
+      if (!keywordNormalized) {
+        return [];
+      }
+
+      const matches = sortedLines.filter((line) => {
+        const normalized = normalizeText(line);
+        return normalized.includes(keywordNormalized);
+      });
+
+      return matches;
+    }
+
+    function renderResults(summaries, rows, keyword) {
+      resultsSection.hidden = false;
+
+      const summaryTable = document.createElement('table');
+      const summaryHead = document.createElement('thead');
+      summaryHead.innerHTML = `
+        <tr>
+          <th style="width: 30%">Tên file</th>
+          <th style="width: 20%">Kết quả</th>
+          <th>Mô tả</th>
+        </tr>
+      `;
+      summaryTable.appendChild(summaryHead);
+
+      const summaryBody = document.createElement('tbody');
+      summaries.forEach((item) => {
+        const tr = document.createElement('tr');
+        const nameTd = document.createElement('td');
+        nameTd.textContent = item.name;
+
+        const statusTd = document.createElement('td');
+        statusTd.style.color = item.status === 'Thành công' ? '#16a34a' : item.status === 'Lỗi' ? '#dc2626' : '#475569';
+        statusTd.style.fontWeight = '600';
+        statusTd.textContent = item.status;
+
+        const messageTd = document.createElement('td');
+        messageTd.textContent = item.message;
+
+        tr.appendChild(nameTd);
+        tr.appendChild(statusTd);
+        tr.appendChild(messageTd);
+        summaryBody.appendChild(tr);
+      });
+      summaryTable.appendChild(summaryBody);
+
+      const rowsTable = document.createElement('table');
+      const rowsHead = document.createElement('thead');
+      rowsHead.innerHTML = `
+        <tr>
+          <th style="width: 30%">Tên file</th>
+          <th>Nội dung hàng</th>
+        </tr>
+      `;
+      rowsTable.appendChild(rowsHead);
+
+      const rowsBody = document.createElement('tbody');
+      if (rows.length) {
+        rows.forEach((row) => {
+          const tr = document.createElement('tr');
+          const fileTd = document.createElement('td');
+          fileTd.textContent = row.fileName;
+          const textTd = document.createElement('td');
+          textTd.textContent = row.text;
+          tr.appendChild(fileTd);
+          tr.appendChild(textTd);
+          rowsBody.appendChild(tr);
+        });
+      } else {
+        const emptyRow = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.innerHTML = '<div class="empty-state">Không có hàng nào phù hợp để hiển thị.</div>';
+        emptyRow.appendChild(td);
+        rowsBody.appendChild(emptyRow);
+      }
+      rowsTable.appendChild(rowsBody);
+
+      resultsBody.innerHTML = '';
+      resultsBody.appendChild(createSectionTitle('Tổng quan theo từng file'));
+      resultsBody.appendChild(summaryTable);
+      const keywordTitle = keyword ? `Danh sách hàng phù hợp với từ khóa "${keyword}"` : 'Danh sách hàng phù hợp với từ khóa';
+      resultsBody.appendChild(createSectionTitle(keywordTitle));
+      resultsBody.appendChild(rowsTable);
+    }
+
+    function createSectionTitle(text) {
+      const title = document.createElement('h2');
+      title.textContent = text;
+      title.style.fontSize = '18px';
+      title.style.margin = '20px 0 12px';
+      title.style.fontWeight = '600';
+      return title;
+    }
+
+    function handleDownload(rows, keyword) {
+      if (!rows.length) {
+        return;
+      }
+
+      const data = [
+        ['Tên file', 'Nội dung hàng']
+      ];
+
+      rows.forEach((row) => {
+        data.push([row.fileName, row.text]);
+      });
+
+      const worksheet = XLSX.utils.aoa_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      const sheetNameRaw = keyword ? keyword.substring(0, 31) : 'TuKhoa';
+      const sheetName = (sheetNameRaw || 'TuKhoa').replace(/[\\\/?*\[\]:]/g, '') || 'TuKhoa';
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+
+      downloadLink.href = url;
+      const sanitizedKeyword = keyword
+        ? normalizeText(keyword).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+        : 'tu-khoa';
+      downloadLink.setAttribute('download', `ket-qua-${sanitizedKeyword || 'tu-khoa'}.xlsx`);
+      downloadLink.hidden = false;
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 5 * 60 * 1000);
+    }
+
+    function normalizeText(text) {
+      return (text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
   </script>
 </body>
 </html>

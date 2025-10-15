@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trích xuất hàng "chu kỳ" từ PDF</title>
+  <title>Trích xuất hàng theo từ khóa từ PDF</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -73,7 +73,8 @@
       margin-bottom: 10px;
     }
 
-    input[type="file"] {
+    input[type="file"],
+    input[type="text"] {
       display: block;
       width: 100%;
       padding: 14px;
@@ -85,7 +86,8 @@
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    input[type="file"]:focus {
+    input[type="file"]:focus,
+    input[type="text"]:focus {
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
       outline: none;
@@ -110,6 +112,22 @@
 
     button:active {
       transform: translateY(1px);
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      margin-top: 12px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      transition: width 0.3s ease;
     }
 
     .status {
@@ -191,10 +209,10 @@
 </head>
 <body>
   <main class="container">
-    <h1>Trích xuất các hàng chứa "chu kỳ"</h1>
+    <h1>Trích xuất các hàng theo từ khóa</h1>
     <p class="lead">
       Tải lên một hoặc nhiều tập tin PDF, công cụ sẽ đọc bảng ở trang thứ hai và xuất toàn bộ
-      những hàng chứa từ khóa <strong>"chu kỳ"</strong> ra một tập tin Excel để bạn thống kê.
+      những hàng chứa từ khóa bạn cung cấp ra một tập tin Excel để bạn thống kê.
     </p>
 
     <section class="input-card">
@@ -203,7 +221,28 @@
         <input id="pdfInput" type="file" accept="application/pdf" multiple />
         <p class="status" id="fileHint">Hệ thống sẽ xử lý từng file và tổng hợp kết quả.</p>
       </div>
+      <div>
+        <label for="keywordInput">Từ khóa cần tìm</label>
+        <input
+          id="keywordInput"
+          type="text"
+          placeholder="Ví dụ: Chu kỳ"
+          value="Chu kỳ"
+        />
+      </div>
       <button id="processBtn" type="button">Bắt đầu trích xuất</button>
+      <div
+        id="progressWrapper"
+        class="progress"
+        hidden
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+        aria-label="Tiến độ xử lý"
+      >
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
       <p class="status" id="status"></p>
     </section>
 
@@ -212,7 +251,7 @@
       <div id="resultsBody"></div>
     </section>
 
-    <a id="downloadLink" class="download-link" href="#" download="ket-qua-chu-ky.xlsx" hidden>
+    <a id="downloadLink" class="download-link" href="#" download="ket-qua-tu-khoa.xlsx" hidden>
       ⬇️ Tải file Excel thống kê
     </a>
   </main>
@@ -222,13 +261,17 @@
 
     const fileInput = document.getElementById('pdfInput');
     const processBtn = document.getElementById('processBtn');
+    const keywordInput = document.getElementById('keywordInput');
     const statusEl = document.getElementById('status');
+    const progressWrapper = document.getElementById('progressWrapper');
+    const progressBar = document.getElementById('progressBar');
     const resultsSection = document.getElementById('results');
     const resultsBody = document.getElementById('resultsBody');
     const downloadLink = document.getElementById('downloadLink');
 
     processBtn.addEventListener('click', async () => {
       const files = Array.from(fileInput.files || []);
+      const keyword = (keywordInput.value || '').trim();
       resetUI();
 
       if (!files.length) {
@@ -236,9 +279,18 @@
         return;
       }
 
+      if (!keyword) {
+        setStatus('Vui lòng nhập từ khóa cần tìm.');
+        return;
+      }
+
       setStatus('Đang xử lý, vui lòng chờ...');
       processBtn.disabled = true;
       processBtn.textContent = 'Đang xử lý...';
+      if (progressWrapper) {
+        progressWrapper.hidden = false;
+      }
+      updateProgress(0);
 
       const collectedRows = [];
       const perFileSummaries = [];
@@ -247,7 +299,7 @@
         setStatus(`Đang xử lý file ${index + 1}/${files.length}: ${file.name}`);
         try {
           const arrayBuffer = await file.arrayBuffer();
-          const matches = await extractRowsFromPdf(arrayBuffer);
+          const matches = await extractRowsFromPdf(arrayBuffer, keyword);
           if (matches.length) {
             matches.forEach((rowText) => {
               collectedRows.push({ fileName: file.name, text: rowText });
@@ -258,7 +310,7 @@
             totalMatches: matches.length,
             status: 'Thành công',
             message: matches.length
-              ? `Tìm thấy ${matches.length} hàng chứa "chu kỳ".`
+              ? `Tìm thấy ${matches.length} hàng chứa từ khóa "${keyword}".`
               : 'Không tìm thấy hàng phù hợp ở trang 2.'
           });
         } catch (error) {
@@ -270,20 +322,23 @@
             message: error?.message || 'Không thể đọc file PDF.'
           });
         }
+
+        updateProgress(((index + 1) / files.length) * 100);
       }
 
-      renderResults(perFileSummaries, collectedRows);
-      handleDownload(collectedRows);
+      renderResults(perFileSummaries, collectedRows, keyword);
+      handleDownload(collectedRows, keyword);
 
       const successCount = collectedRows.length;
       if (successCount) {
-        setStatus(`Hoàn tất! Đã tìm thấy ${successCount} hàng chứa "chu kỳ".`);
+        setStatus(`Hoàn tất! Đã tìm thấy ${successCount} hàng chứa từ khóa "${keyword}".`);
       } else {
-        setStatus('Hoàn tất! Không tìm thấy hàng nào chứa "chu kỳ".');
+        setStatus(`Hoàn tất! Không tìm thấy hàng nào chứa từ khóa "${keyword}".`);
       }
 
       processBtn.disabled = false;
       processBtn.textContent = 'Bắt đầu trích xuất';
+      updateProgress(100);
     });
 
     function resetUI() {
@@ -292,13 +347,28 @@
       resultsBody.innerHTML = '';
       downloadLink.hidden = true;
       downloadLink.removeAttribute('href');
+      downloadLink.setAttribute('download', 'ket-qua-tu-khoa.xlsx');
+      if (progressWrapper) {
+        progressWrapper.hidden = true;
+      }
+      updateProgress(0);
     }
 
     function setStatus(message) {
       statusEl.textContent = message;
     }
 
-    async function extractRowsFromPdf(arrayBuffer) {
+    function updateProgress(value) {
+      if (!progressBar) return;
+      const clamped = Math.max(0, Math.min(100, value));
+      progressBar.style.width = `${clamped}%`;
+      progressBar.setAttribute('aria-valuenow', clamped.toFixed(0));
+      if (progressWrapper) {
+        progressWrapper.setAttribute('aria-valuenow', clamped.toFixed(0));
+      }
+    }
+
+    async function extractRowsFromPdf(arrayBuffer, keyword) {
       const uint8 = new Uint8Array(arrayBuffer);
       const loadingTask = pdfjsLib.getDocument({ data: uint8 });
       const pdf = await loadingTask.promise;
@@ -339,15 +409,20 @@
         })
         .filter(Boolean);
 
+      const keywordNormalized = normalizeText(keyword);
+      if (!keywordNormalized) {
+        return [];
+      }
+
       const matches = sortedLines.filter((line) => {
-        const normalized = line.toLowerCase();
-        return normalized.includes('chu kỳ') || normalized.includes('chu ky');
+        const normalized = normalizeText(line);
+        return normalized.includes(keywordNormalized);
       });
 
       return matches;
     }
 
-    function renderResults(summaries, rows) {
+    function renderResults(summaries, rows, keyword) {
       resultsSection.hidden = false;
 
       const summaryTable = document.createElement('table');
@@ -364,12 +439,20 @@
       const summaryBody = document.createElement('tbody');
       summaries.forEach((item) => {
         const tr = document.createElement('tr');
-        const statusColor = item.status === 'Thành công' ? '#16a34a' : item.status === 'Lỗi' ? '#dc2626' : '#475569';
-        tr.innerHTML = `
-          <td>${item.name}</td>
-          <td style="color: ${statusColor}; font-weight: 600;">${item.status}</td>
-          <td>${item.message}</td>
-        `;
+        const nameTd = document.createElement('td');
+        nameTd.textContent = item.name;
+
+        const statusTd = document.createElement('td');
+        statusTd.style.color = item.status === 'Thành công' ? '#16a34a' : item.status === 'Lỗi' ? '#dc2626' : '#475569';
+        statusTd.style.fontWeight = '600';
+        statusTd.textContent = item.status;
+
+        const messageTd = document.createElement('td');
+        messageTd.textContent = item.message;
+
+        tr.appendChild(nameTd);
+        tr.appendChild(statusTd);
+        tr.appendChild(messageTd);
         summaryBody.appendChild(tr);
       });
       summaryTable.appendChild(summaryBody);
@@ -388,10 +471,12 @@
       if (rows.length) {
         rows.forEach((row) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${row.fileName}</td>
-            <td>${row.text}</td>
-          `;
+          const fileTd = document.createElement('td');
+          fileTd.textContent = row.fileName;
+          const textTd = document.createElement('td');
+          textTd.textContent = row.text;
+          tr.appendChild(fileTd);
+          tr.appendChild(textTd);
           rowsBody.appendChild(tr);
         });
       } else {
@@ -407,7 +492,8 @@
       resultsBody.innerHTML = '';
       resultsBody.appendChild(createSectionTitle('Tổng quan theo từng file'));
       resultsBody.appendChild(summaryTable);
-      resultsBody.appendChild(createSectionTitle('Danh sách hàng chứa "chu kỳ"'));
+      const keywordTitle = keyword ? `Danh sách hàng phù hợp với từ khóa "${keyword}"` : 'Danh sách hàng phù hợp với từ khóa';
+      resultsBody.appendChild(createSectionTitle(keywordTitle));
       resultsBody.appendChild(rowsTable);
     }
 
@@ -420,7 +506,7 @@
       return title;
     }
 
-    function handleDownload(rows) {
+    function handleDownload(rows, keyword) {
       if (!rows.length) {
         return;
       }
@@ -435,18 +521,33 @@
 
       const worksheet = XLSX.utils.aoa_to_sheet(data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'ChuKy');
+      const sheetNameRaw = keyword ? keyword.substring(0, 31) : 'TuKhoa';
+      const sheetName = (sheetNameRaw || 'TuKhoa').replace(/[\\\/?*\[\]:]/g, '') || 'TuKhoa';
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
       const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
       const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
 
       downloadLink.href = url;
+      const sanitizedKeyword = keyword
+        ? normalizeText(keyword).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+        : 'tu-khoa';
+      downloadLink.setAttribute('download', `ket-qua-${sanitizedKeyword || 'tu-khoa'}.xlsx`);
       downloadLink.hidden = false;
 
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 5 * 60 * 1000);
+    }
+
+    function normalizeText(text) {
+      return (text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
   </script>
 </body>
